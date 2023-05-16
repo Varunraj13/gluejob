@@ -1,0 +1,78 @@
+import os
+import boto3
+from datetime import datetime, timedelta
+from tabulate import tabulate
+
+# Connect to AWS Glue
+glue_client = boto3.client('glue')
+
+# Connect to AWS SNS
+sns_client = boto3.client('sns')
+
+# Specify the time interval for the Glue job status
+start_time = datetime.now() - timedelta(hours=24)
+end_time = datetime.now()
+
+# Get all Glue job names
+response = glue_client.get_jobs()
+job_names = [job['Name'] for job in response['Jobs']]
+
+# Process job status information
+table_data = []
+for job_name in job_names:
+    response = glue_client.get_job_runs(
+        JobName=job_name,
+        StartTimeFilter={
+            'From': start_time,
+            'To': end_time
+        },
+        MaxResults=100
+    )
+
+    successful_jobs = 0
+    failed_jobs = 0
+    for job_run in response['JobRuns']:
+        status = job_run['JobRunState']
+        if status == 'SUCCEEDED':
+            successful_jobs += 1
+        elif status == 'FAILED':
+            failed_jobs += 1
+
+    table_data.append([job_name, successful_jobs, failed_jobs])
+
+# Generate output table
+table = tabulate(
+    table_data,
+    headers=['Job Name', 'Successful Jobs', 'Failed Jobs'],
+    tablefmt='grid'
+)
+
+# Compose email message
+subject = 'Glue Job Status'
+message = f'Glue Job Status:\n\n{table}'
+
+# Get the recipient email address
+recipient_email = 'recipient@example.com'  # Replace with the recipient's email address
+
+# Send email using SNS
+topic_arn = 'your_sns_topic_arn'
+sns_client.publish(
+    TopicArn=topic_arn,
+    Subject=subject,
+    Message=message,
+    MessageStructure='string',
+    MessageAttributes={
+        'email': {
+            'DataType': 'String',
+            'StringValue': recipient_email
+        }
+    }
+)
+
+
+
+In this code snippet, you need to replace 'your_sns_topic_arn' with the ARN of your SNS topic, and 'recipient@example.com' with the recipient's email address.
+
+The code retrieves the Glue job names, processes the job status information, generates an output table, and composes an email message with the table content. It then publishes the message to the specified SNS topic, including the recipient email address as a message attribute.
+
+With this approach, the SNS topic will send a single email to the specified recipient with the Glue job statuses included in the email body. The email will be sent based on the configured subscription settings of the SNS topic, such as email endpoints or other supported protocols.
