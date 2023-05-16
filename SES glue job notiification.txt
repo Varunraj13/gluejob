@@ -1,0 +1,78 @@
+import os
+import boto3
+from datetime import datetime, timedelta
+from tabulate import tabulate
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+import smtplib
+
+# Connect to AWS Glue
+glue_client = boto3.client('glue')
+
+# Specify the time interval for the Glue job status
+start_time = datetime.now() - timedelta(hours=24)
+end_time = datetime.now()
+
+# Get all Glue job names
+response = glue_client.get_jobs()
+job_names = [job['Name'] for job in response['Jobs']]
+
+# Process job status information
+table_data = []
+for job_name in job_names:
+    response = glue_client.get_job_runs(
+        JobName=job_name,
+        StartTimeFilter={
+            'From': start_time,
+            'To': end_time
+        },
+        MaxResults=100
+    )
+
+    successful_jobs = 0
+    failed_jobs = 0
+    for job_run in response['JobRuns']:
+        status = job_run['JobRunState']
+        if status == 'SUCCEEDED':
+            successful_jobs += 1
+        elif status == 'FAILED':
+            failed_jobs += 1
+
+    table_data.append([job_name, successful_jobs, failed_jobs])
+
+# Generate output table
+table = tabulate(
+    table_data,
+    headers=['Job Name', 'Successful Jobs', 'Failed Jobs'],
+    tablefmt='grid'
+)
+
+# Create email content
+message = MIMEMultipart()
+message['Subject'] = 'Glue Job Status'
+message['From'] = 'your_email@example.com'
+message['To'] = 'recipient@example.com'
+
+# Add the table as plain text in the email body
+text = MIMEText(table)
+message.attach(text)
+
+# Convert the table to PDF and attach it to the email
+html = f'<pre>{table}</pre>'
+pdf = MIMEApplication(pdfkit.from_string(html, False, options={'quiet': ''}))
+pdf.add_header('Content-Disposition', 'attachment', filename='glue_job_status.pdf')
+message.attach(pdf)
+
+# Send the email
+with smtplib.SMTP('your_smtp_server', 587) as smtp:
+    smtp.login('SMTP_USERNAME', 'SMTP_PASSWORD')
+    smtp.send_message(message)
+
+
+
+
+
+In this code, you need to replace 'your_email@example.com' with your email address, 'recipient@example.com' with the recipient's email address, 'your_smtp_server' with the SMTP server address (e.g., for Gmail, it is 'smtp.gmail.com'), and provide your SMTP username and password in the smtp.login() function call.
+
+The code retrieves the Glue job names, processes the job status information, generates an output table, converts the table to PDF, and sends the notification email with the table content as both plain text and a PDF attachment.
